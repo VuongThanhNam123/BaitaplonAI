@@ -77,7 +77,7 @@ class ReflexAgent(Agent):
         best = 0
 
         for x in newFood.asList() :
-            best = max(best, 1 / manhattanDistance(newPos, x))
+            best = max(best, 1 / getMazeDistance(newPos, x, currentGameState))
 
         "*** YOUR CODE HERE ***"
         return successorGameState.getScore() + best
@@ -91,6 +91,48 @@ def scoreEvaluationFunction(currentGameState: GameState):
     (not reflex agents).
     """
     return currentGameState.getScore()
+
+maze_distance = {}
+
+def bfs(pos1, pos2, gameState):
+    from collections import deque
+
+    walls = gameState.getWalls()
+
+    queue = deque([(pos1, 0)])
+
+    visited = set()
+    visited.add(pos1)
+
+    while queue:
+        current_pos, dist = queue.popleft()
+
+        if current_pos == pos2:
+            return dist
+
+        x, y = current_pos
+
+        for dx, dy in [(0, 1), (0, -1), (-1, 0), (1, 0)]:
+            next_x, next_y = x + dx, y + dy
+            next_pos = (next_x, next_y)
+
+            if not walls[next_x][next_y] and next_pos not in visited:
+                visited.add(next_pos)
+                queue.append((next_pos, dist + 1))
+
+    return 99999
+
+def getMazeDistance(pos1, pos2, gameState):
+    pair_key = tuple(sorted((pos1, pos2)))
+
+    if pair_key in maze_distance:
+        return maze_distance[pair_key]
+
+    dist = bfs(pos1, pos2, gameState)
+
+    maze_distance[pair_key] = dist
+
+    return dist
 
 class MultiAgentSearchAgent(Agent):
     """
@@ -111,6 +153,12 @@ class MultiAgentSearchAgent(Agent):
         self.index = 0 # Pacman is always agent index 0
         self.evaluationFunction = util.lookup(evalFn, globals())
         self.depth = int(depth)
+
+        global maze_distance
+        maze_distance.clear()
+
+
+import time
 
 class MinimaxAgent(MultiAgentSearchAgent):
     """
@@ -163,16 +211,17 @@ class MinimaxAgent(MultiAgentSearchAgent):
 
                 return min_score
 
-        best_action = None
+        legalActions = gameState.getLegalActions(0)
+        best_action = legalActions[0]
         best_score = -float('inf')
 
-        for action in gameState.getLegalActions(0) :
+        for action in legalActions:
             last_state = gameState.generateSuccessor(0, action)
             score = minimax(last_state, 1, 0)
             if score > best_score :
                 best_action = action
                 best_score = score
-        
+
         return best_action
 
 class AlphaBetaAgent(MultiAgentSearchAgent):
@@ -219,20 +268,21 @@ class AlphaBetaAgent(MultiAgentSearchAgent):
 
         alpha = float('-inf')
         beta = float('inf')
-        bestScore = float('-inf')
-        bestAction = None
+        legalActions = gameState.getLegalActions(0)
+        best_action = legalActions[0]
+        best_score = -float('inf')
 
-        for action in gameState.getLegalActions(0):
+        for action in legalActions:
             successor = gameState.generateSuccessor(0, action)
             score = minimax(successor, 1, 0, alpha, beta)
 
-            if score > bestScore:
-                bestScore = score
-                bestAction = action
+            if score > best_score:
+                best_score = score
+                best_action = action
 
-            alpha = max(alpha, bestScore)
+            alpha = max(alpha, best_score)
 
-        return bestAction
+        return best_action
 
 class ExpectimaxAgent(MultiAgentSearchAgent):
     """
@@ -240,13 +290,6 @@ class ExpectimaxAgent(MultiAgentSearchAgent):
     """
 
     def getAction(self, gameState: GameState):
-        """
-        Returns the expectimax action using self.depth and self.evaluationFunction
-
-        All ghosts should be modeled as choosing uniformly at random from their
-        legal moves.
-        """
-        "*** YOUR CODE HERE ***"
         def expectimax(state, agentIndex, depth):
             if state.isWin() or state.isLose() or depth == self.depth:
                 return self.evaluationFunction(state)
@@ -273,12 +316,18 @@ class ExpectimaxAgent(MultiAgentSearchAgent):
                     total += score
                 return total / len(legalActions)
 
-        best_action = None
+        legalActions = gameState.getLegalActions(0)
+        best_action = legalActions[0]
         best_score = -float('inf')
 
-        for action in gameState.getLegalActions(0) :
+        numAgents = gameState.getNumAgents()
+        next_agent = 1 % numAgents
+        start_depth = 1 if next_agent == 0 else 0
+
+
+        for action in legalActions :
             last_state = gameState.generateSuccessor(0, action)
-            score = expectimax(last_state, 1, 0)
+            score = expectimax(last_state, next_agent, start_depth)
             if score > best_score :
                 best_action = action
                 best_score = score
@@ -287,13 +336,6 @@ class ExpectimaxAgent(MultiAgentSearchAgent):
 
 
 def betterEvaluationFunction(currentGameState: GameState):
-    """
-    Your extreme ghost-hunting, pellet-nabbing, food-gobbling, unstoppable
-    evaluation function (question 5).
-
-    DESCRIPTION: <write something here so we know what you did>
-    """
-    "*** YOUR CODE HERE ***"
     pos = currentGameState.getPacmanPosition()
     foodList = currentGameState.getFood().asList()
     ghostStates = currentGameState.getGhostStates()
@@ -301,23 +343,24 @@ def betterEvaluationFunction(currentGameState: GameState):
     score = currentGameState.getScore()
 
     if len(foodList) > 0:
-        min_food_dist = min([manhattanDistance(pos, food) for food in foodList])
-        score += 10.0 / min_food_dist - 5 * len(foodList)
+        min_food_dist = min([getMazeDistance(pos, food, currentGameState) for food in foodList])
+        score += 30.0 / min_food_dist
+
+    score -= 20 * len(foodList)
+
+    tmp = 0
 
     for ghost in ghostStates:
-        ghost_dist = manhattanDistance(pos, ghost.getPosition())
+        ghost_dist = getMazeDistance(pos, ghost.getPosition(), currentGameState)
 
         if ghost.scaredTimer == 0:
             if ghost_dist <= 1:
                 return float("-inf")
-            elif ghost_dist < 5:
-                score -= 3.0 / ghost_dist
 
         elif ghost.scaredTimer > 0:
             if ghost_dist > 0:
-                score += 222.0 / ghost_dist
-
-    return score
+                tmp = max(tmp, 222.0 / ghost_dist)
+    return score + tmp
 
 # Abbreviation
 better = betterEvaluationFunction
