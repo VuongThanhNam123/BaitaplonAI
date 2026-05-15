@@ -74,10 +74,10 @@ class ReflexAgent(Agent):
         newGhostStates = successorGameState.getGhostStates()
         newScaredTimes = [ghostState.scaredTimer for ghostState in newGhostStates]
 
-        best = 0
+        best = -float('inf')
 
         for x in newFood.asList() :
-            best = max(best, 1 / getMazeDistance(newPos, x, currentGameState))
+            best = max(best, -getMazeDistance(newPos, x, currentGameState))
 
         "*** YOUR CODE HERE ***"
         return successorGameState.getScore() + best
@@ -120,7 +120,7 @@ def bfs(pos1, pos2, gameState):
                 visited.add(next_pos)
                 queue.append((next_pos, dist + 1))
 
-    return 99999
+    return -float('inf')
 
 def getMazeDistance(pos1, pos2, gameState):
     pair_key = tuple(sorted((pos1, pos2)))
